@@ -1,4 +1,3 @@
-import logging
 
 import torch
 from torch_geometric.loader import DataLoader
@@ -13,6 +12,7 @@ import random
 
 from absl import app
 from absl import flags
+from absl import logging
 
 from networks.gcn_layer import GCNLayer
 from networks.test_net import TestNet
