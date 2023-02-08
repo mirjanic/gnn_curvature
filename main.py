@@ -1,4 +1,3 @@
-
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import Data
@@ -22,7 +21,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_float('lr', 0.001, 'Learning rate')
 flags.DEFINE_integer('epochs', 50, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
-flags.DEFINE_integer('bs', 64, 'Batch size')
+flags.DEFINE_integer('bs', 256, 'Batch size')
 
 
 def set_seed(seed):
@@ -67,7 +66,7 @@ def main(unused_argv):
 
         logging.info(f"Epoch {epoch}")
 
-        train_loader = DataLoader(dataset, batch_size=256, shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=FLAGS.bs, shuffle=True)
 
         for batch in train_loader:
             batch = batch.to(device)
@@ -75,7 +74,7 @@ def main(unused_argv):
 
 
         losses = []
-        val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+        val_loader = DataLoader(val_dataset, batch_size=FLAGS.bs, shuffle=False)
         for batch in val_loader:
             batch = batch.to(device)
             losses += [test(model, batch)]
