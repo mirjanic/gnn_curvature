@@ -27,7 +27,7 @@ flags.DEFINE_integer('epochs', 100, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 128, 'Batch size')
 flags.DEFINE_integer('num_eigens', 5, 'Number of eigenvector features to generate.')
-flags.DEFINE_integer('hidden_dim', 64, 'Hidden dim')
+flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 
 
@@ -66,35 +66,34 @@ def load_datasets(device) -> Tuple[Iterable, Iterable, Iterable]:
 
   splits = ['train', 'val', 'test']
 
-  datasets = {k: ZINC(root='data/zinc', split='val', subset=True, pre_transform=transform) for k in splits}
+  datasets = {k: ZINC(root='data/zinc', split=k, subset=True, pre_transform=transform) for k in splits}
 
   for v in datasets.values():
     v.data = v.data.to(device)
 
-  dataloaders = {k: DataLoader(v, batch_size=FLAGS.bs, shuffle=k != 'test') for (k, v) in datasets.items()}
+  dataloaders = {k: DataLoader(v, batch_size=FLAGS.bs, shuffle=True) for (k, v) in datasets.items()}
 
   return dataloaders['train'], dataloaders['val'], dataloaders['test']
 
 
 def main(unused_argv):
   set_seed(FLAGS.seed)
-
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   # Important! If you already downloaded non-transformed dataset you need to delete it
   train_dl, val_dl, test_dl = load_datasets(device)
 
   # Create model and move to device
-  model = TestNet(hidden_dim=FLAGS.hidden_dim, output_dim=1, num_layers=FLAGS.num_layers, eigen_count=FLAGS.num_eigens)
+  model = TestNet(hidden_dim=FLAGS.hidden_dim,
+                  output_dim=1,
+                  num_layers=FLAGS.num_layers,
+                  eigen_count=FLAGS.num_eigens)
   model.to(device)
 
   optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
   criterion = torch.nn.L1Loss()
 
   for epoch in range(FLAGS.epochs):
-
-    logging.info(f"Epoch {epoch}")
-
     losses = []
     for batch in train_dl:
       losses += [train(model, optimizer, batch, criterion)]
@@ -105,12 +104,12 @@ def main(unused_argv):
       losses += [test(model, batch, criterion)]
     val_loss = torch.mean(torch.Tensor(losses))
 
-    logging.info(f"train: {train_loss:.3f}, val: {val_loss:.3f}")
+    logging.info(f"epoch: {epoch} \t train: {train_loss:.4f} \t val: {val_loss:.4f}")
 
   losses = []
   for batch in test_dl:
     losses += [test(model, batch, criterion)]
-  print(f"Final loss: {torch.mean(torch.Tensor(losses)):.3f}")
+  logging.info(f"Final loss: <<< {torch.mean(torch.Tensor(losses)):.4f} >>>")
 
   return
 

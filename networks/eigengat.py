@@ -54,7 +54,7 @@ class EigenGATConv(MessagePassing):
     self.eigen_count = eigen_count
 
     self.feature_lin = Linear(in_channels, heads * out_channels, bias=False, weight_initializer='glorot')
-    self.eigen_lin = Linear(eigen_count, 1, bias=False, weight_initializer='glorot')  # TODO this seems sketchy
+    self.eigen_lin = Linear(eigen_count, heads, bias=False, weight_initializer='glorot')  # TODO out_channels seems sketchy here
 
     # The learnable parameters to compute attention coefficients:
     self.att_src = Parameter(torch.Tensor(1, heads, out_channels))
@@ -106,7 +106,7 @@ class EigenGATConv(MessagePassing):
     # We first transform the input node features.
     assert eigens.dim() == 2 and x.dim() == 2, "Static graphs not supported in 'GATConv'"
     x = self.feature_lin(x).view(-1, H, C)
-    eigens = self.eigen_lin(eigens).view(-1, 1, 1)
+    eigens = self.eigen_lin(eigens).view(-1, H, 1)
 
     # Next, we compute node-level attention coefficients, both for source
     # and target nodes (if present):
@@ -139,7 +139,7 @@ class EigenGATConv(MessagePassing):
     # Note: we only use x for propagation / message passing
     out = self.propagate(edge_index, x=x, alpha=alpha, size=size)
 
-    out = out.mean(dim=1)  # TODO this seems sketchy
+    out = out.mean(dim=1)
 
     if self.bias is not None:
       out = out + self.bias

@@ -10,13 +10,6 @@ from networks.eigengat import EigenGATConv
 import torch.nn.functional as F
 
 
-def get_layer(control=True, **kwargs):
-  if control:
-    return GATConv(**kwargs)
-  else:
-    return EigenGATConv(**kwargs)
-
-
 class TestNet(nn.Module):
 
   def __init__(self, hidden_dim, output_dim, num_layers, eigen_count):
@@ -25,11 +18,11 @@ class TestNet(nn.Module):
     self.num_layers = num_layers
     self.embed = Embedding(28, hidden_dim)
 
-    self.layers = [get_layer(control=True,
-                             in_channels=hidden_dim,
-                             out_channels=hidden_dim,
-                             # eigen_count=eigen_count,
-                             concat=False)
+    self.layers = [EigenGATConv(control=True,
+                                in_channels=hidden_dim,
+                                out_channels=hidden_dim,
+                                eigen_count=eigen_count,
+                                concat=False)
                    for _ in range(num_layers)]
     self.layers = nn.ModuleList(self.layers)
     self.mlp = Sequential(Linear(hidden_dim, hidden_dim),
@@ -45,7 +38,7 @@ class TestNet(nn.Module):
     x = self.embed(x.long()).squeeze(1)
 
     for i in range(self.num_layers):
-      x = self.layers[i](x, edge_index)
+      x = self.layers[i](x, edge_index, eigens)
       x = F.relu(x)
 
     y = scatter_sum(x, batch, dim=0)
