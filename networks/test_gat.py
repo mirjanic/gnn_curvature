@@ -1,28 +1,24 @@
-import torch.nn
 import torch.nn as nn
 from torch.nn import Embedding, Sequential, ReLU, Linear
-from torch_geometric.nn import GATConv
 from torch_scatter import scatter_sum
 
-from networks.gcn_layer import GCNLayer
-from networks.eigengat import EigenGATConv
+from networks.layers.eigengat import EigenGAT
 
 import torch.nn.functional as F
 
 
-class TestNet(nn.Module):
+class TestGAT(nn.Module):
 
   def __init__(self, hidden_dim, output_dim, num_layers, eigen_count):
-    super(TestNet, self).__init__()
+    super(TestGAT, self).__init__()
 
     self.num_layers = num_layers
     self.embed = Embedding(28, hidden_dim)
 
-    self.layers = [EigenGATConv(control=True,
-                                in_channels=hidden_dim,
-                                out_channels=hidden_dim,
-                                eigen_count=eigen_count,
-                                concat=False)
+    self.layers = [EigenGAT(in_channels=hidden_dim,
+                            out_channels=hidden_dim,
+                            eigen_count=eigen_count,
+                            concat=False)
                    for _ in range(num_layers)]
     self.layers = nn.ModuleList(self.layers)
     self.mlp = Sequential(Linear(hidden_dim, hidden_dim),

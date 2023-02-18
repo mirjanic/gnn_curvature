@@ -1,13 +1,10 @@
 from typing import Tuple, Iterable
 
 import torch
-import torch_geometric
 from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import Data
 from torch_geometric.datasets.zinc import ZINC
-from torch_geometric.datasets.planetoid import Planetoid
 
-import torch.nn.functional as F
 import torch_geometric.transforms as T
 import numpy as np
 import random
@@ -15,10 +12,8 @@ import random
 from absl import app
 from absl import flags
 from absl import logging
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
-from networks.gcn_layer import GCNLayer
-from networks.test_net import TestNet
+from networks.test_rot import TestRotConv
 
 FLAGS = flags.FLAGS
 
@@ -29,7 +24,6 @@ flags.DEFINE_integer('bs', 128, 'Batch size')
 flags.DEFINE_integer('num_eigens', 5, 'Number of eigenvector features to generate.')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
-
 
 
 def set_seed(seed):
@@ -62,7 +56,7 @@ def load_datasets(device) -> Tuple[Iterable, Iterable, Iterable]:
   """
   Precompute eigenvectors, move data to GPU, shuffle and minibatch
   """
-  transform = AddLaplacianEigenvectorPE(k=FLAGS.num_eigens, attr_name='eigens')
+  transform = T.AddLaplacianEigenvectorPE(k=FLAGS.num_eigens, attr_name='eigens')
 
   splits = ['train', 'val', 'test']
 
@@ -84,10 +78,15 @@ def main(unused_argv):
   train_dl, val_dl, test_dl = load_datasets(device)
 
   # Create model and move to device
-  model = TestNet(hidden_dim=FLAGS.hidden_dim,
-                  output_dim=1,
-                  num_layers=FLAGS.num_layers,
-                  eigen_count=FLAGS.num_eigens)
+  # model = TestGAT(hidden_dim=FLAGS.hidden_dim,
+  #                 output_dim=1,
+  #                 num_layers=FLAGS.num_layers,
+  #                 eigen_count=FLAGS.num_eigens)
+  model = TestRotConv(hidden_dim=FLAGS.hidden_dim // 4,
+                      dimension=4,
+                      output_dim=1,
+                      num_layers=FLAGS.num_layers,
+                      eigen_count=FLAGS.num_eigens)
   model.to(device)
 
   optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
