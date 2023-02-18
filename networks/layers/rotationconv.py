@@ -57,7 +57,6 @@ class RotationConv(MessagePassing):
 
     x = self.feature_lin(x)
 
-    # propagate_type: (x: Tensor, edge_weight: OptTensor)
     out = self.propagate(edge_index, x=x, edge_weight=edge_weight, size=None)
 
     eigens = self.eigen_lin(eigens)
