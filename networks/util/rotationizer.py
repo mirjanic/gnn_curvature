@@ -9,6 +9,6 @@ def rotationize(x: Tensor):
   :return: Tensor of shape x*d*d where all d*d matrices are in O(d)
   """
   upper = torch.triu(x)                                 # Take upper triangular part of input
-  skew_sym = upper - torch.transpose(upper, 1, 2)       # Create skew symmetric matrix
+  skew_sym = upper - torch.transpose(upper, -1, -2)     # Create skew symmetric matrix
   rotation = torch.linalg.matrix_exp(skew_sym)          # Exponentiate to get an orthogonal matrix
   return rotation

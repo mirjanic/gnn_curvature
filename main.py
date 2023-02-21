@@ -13,6 +13,7 @@ from absl import app
 from absl import flags
 from absl import logging
 
+from networks.test_gat import TestGAT
 from networks.test_rot import TestRotConv
 
 FLAGS = flags.FLAGS
@@ -20,9 +21,9 @@ FLAGS = flags.FLAGS
 flags.DEFINE_float('lr', 0.001, 'Learning rate')
 flags.DEFINE_integer('epochs', 100, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
-flags.DEFINE_integer('bs', 128, 'Batch size')
+flags.DEFINE_integer('bs', 64, 'Batch size')
 flags.DEFINE_integer('num_eigens', 5, 'Number of eigenvector features to generate.')
-flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
+flags.DEFINE_integer('hidden_dim', 128, 'Number of latent dimensions')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 
 
@@ -82,8 +83,8 @@ def main(unused_argv):
   #                 output_dim=1,
   #                 num_layers=FLAGS.num_layers,
   #                 eigen_count=FLAGS.num_eigens)
-  model = TestRotConv(hidden_dim=FLAGS.hidden_dim // 4,
-                      dimension=4,
+  model = TestRotConv(hidden_dim=FLAGS.hidden_dim // 2,
+                      dimension=2,
                       output_dim=1,
                       num_layers=FLAGS.num_layers,
                       eigen_count=FLAGS.num_eigens)
@@ -93,6 +94,7 @@ def main(unused_argv):
   criterion = torch.nn.L1Loss()
 
   for epoch in range(FLAGS.epochs):
+
     losses = []
     for batch in train_dl:
       losses += [train(model, optimizer, batch, criterion)]
