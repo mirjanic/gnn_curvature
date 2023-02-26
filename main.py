@@ -13,18 +13,26 @@ from absl import app
 from absl import flags
 from absl import logging
 
-from networks.test_gat import TestGAT
-from networks.test_rot import TestRotConv
+from networks.test_model import TestModel, ModelType
 
 FLAGS = flags.FLAGS
 
+# Training params
 flags.DEFINE_float('lr', 0.001, 'Learning rate')
 flags.DEFINE_integer('epochs', 100, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
-flags.DEFINE_integer('bs', 64, 'Batch size')
-flags.DEFINE_integer('num_eigens', 5, 'Number of eigenvector features to generate.')
-flags.DEFINE_integer('hidden_dim', 128, 'Number of latent dimensions')
+flags.DEFINE_integer('bs', 128, 'Batch size')
+
+# Model params
+flags.DEFINE_enum('model_name', 'rotations', ['gat', 'eigen_gat', 'rotations', 'sheaf'], 'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
+flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
+
+# Features params
+# TODO I couldn't get more than 6 features to work
+flags.DEFINE_integer('spatial_features_count', 6, 'Number of eigenvector and random walk features to generate.')
+flags.DEFINE_enum('spatial_features_name', 'eigens', ['eigens', 'walks'], 'Whether to use eigenvectors or random walks')
+flags.DEFINE_integer('dimension', 2, 'Rotation dimensions. Used only for rotations.')
 
 
 def set_seed(seed):
@@ -57,11 +65,14 @@ def load_datasets(device) -> Tuple[Iterable, Iterable, Iterable]:
   """
   Precompute eigenvectors, move data to GPU, shuffle and minibatch
   """
-  transform = T.AddLaplacianEigenvectorPE(k=FLAGS.num_eigens, attr_name='eigens')
+  transforms = T.Compose([
+    T.AddLaplacianEigenvectorPE(k=FLAGS.spatial_features_count, attr_name='eigens'),
+    T.AddRandomWalkPE(walk_length=FLAGS.spatial_features_count, attr_name='walks')
+    ])
 
   splits = ['train', 'val', 'test']
 
-  datasets = {k: ZINC(root='data/zinc', split=k, subset=True, pre_transform=transform) for k in splits}
+  datasets = {k: ZINC(root='data/zinc', split=k, subset=True, pre_transform=transforms) for k in splits}
 
   for v in datasets.values():
     v.data = v.data.to(device)
@@ -78,16 +89,19 @@ def main(unused_argv):
   # Important! If you already downloaded non-transformed dataset you need to delete it
   train_dl, val_dl, test_dl = load_datasets(device)
 
-  # Create model and move to device
-  # model = TestGAT(hidden_dim=FLAGS.hidden_dim,
-  #                 output_dim=1,
-  #                 num_layers=FLAGS.num_layers,
-  #                 eigen_count=FLAGS.num_eigens)
-  model = TestRotConv(hidden_dim=FLAGS.hidden_dim // 2,
-                      dimension=2,
-                      output_dim=1,
-                      num_layers=FLAGS.num_layers,
-                      eigen_count=FLAGS.num_eigens)
+  logging.info(f"Training model '{FLAGS.model_name}'")
+
+  model_kwargs = {
+    'model': ModelType(FLAGS.model_name),
+    'num_layers': FLAGS.num_layers,
+    'eigen_count': FLAGS.spatial_features_count,
+    'spatial_name': FLAGS.spatial_features_name,
+    'hidden_dim': FLAGS.hidden_dim,
+    'dimension': FLAGS.dimension,
+    'output_dim': 1
+  }
+
+  model = TestModel(**model_kwargs)
   model.to(device)
 
   optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
