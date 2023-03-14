@@ -18,10 +18,10 @@ from networks.test_model import TestModel, ModelType
 FLAGS = flags.FLAGS
 
 # Training params
-flags.DEFINE_float('lr', 0.001, 'Learning rate')
+flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_integer('epochs', 100, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
-flags.DEFINE_integer('bs', 128, 'Batch size')
+flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
 flags.DEFINE_enum('model_name', 'rotations', ['gat', 'eigen_gat', 'rotations', 'sheaf'], 'Model to train')
@@ -37,11 +37,10 @@ flags.DEFINE_integer('dimension', 2, 'Rotation dimensions. Used only for rotatio
 
 def set_seed(seed):
   torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)
   np.random.seed(seed)
   random.seed(seed)
-
+  # torch.backends.cudnn.benchmark = False
+  # torch.use_deterministic_algorithms(True)
 
 def train(model, optimizer, data: Data, criterion):
   model.train()
