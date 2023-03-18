@@ -7,6 +7,7 @@ from torch_scatter import scatter_sum
 
 from networks.layers.eigengat import EigenGAT
 from networks.layers.rotationconv import RotationConv
+from networks.layers.featrotationconv import FeatureRotationConv
 
 import torch.nn.functional as F
 
@@ -17,13 +18,14 @@ class ModelType(Enum):
   gat = 'gat'
   eigen_gat = 'eigen_gat'
   rotation_conv = 'rotations'
+  feature_rotation_conv = 'feat_rotations'
   sheaf = 'sheaf'
 
   def takes_eigens(self):
     match self:
-      case ModelType.gat:
+      case ModelType.gat | ModelType.sheaf:
         return False
-      case ModelType.eigen_gat | ModelType.rotation_conv | ModelType.sheaf:
+      case ModelType.eigen_gat | ModelType.rotation_conv | ModelType.feature_rotation_conv:
         return True
       case _:
         raise ValueError('Invalid model')
@@ -32,7 +34,7 @@ class ModelType(Enum):
     match self:
       case ModelType.gat | ModelType.eigen_gat:
         return False
-      case ModelType.rotation_conv | ModelType.sheaf:
+      case ModelType.rotation_conv | ModelType.feature_rotation_conv | ModelType.sheaf:
         return True
       case _:
         raise ValueError('Invalid model')
@@ -53,6 +55,12 @@ class ModelType(Enum):
                             out_channels=out_channels,
                             eigen_count=kwargs['eigen_count'],
                             dimension=kwargs['dimension'])
+
+      case ModelType.feature_rotation_conv:
+        return FeatureRotationConv(in_channels=in_channels,
+                                   out_channels=out_channels,
+                                   eigen_count=kwargs['eigen_count'],
+                                   dimension=kwargs['dimension'])
 
       case ModelType.sheaf:
         return SheafConv(in_channels=in_channels,

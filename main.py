@@ -19,12 +19,12 @@ FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_integer('epochs', 100, 'Epochs')
+flags.DEFINE_integer('epochs', 10, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
-flags.DEFINE_enum('model_name', 'rotations', ['gat', 'eigen_gat', 'rotations', 'sheaf'], 'Model to train')
+flags.DEFINE_enum('model_name', 'feat_rotations', ['gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'], 'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
 
