@@ -2,7 +2,7 @@ from enum import Enum
 
 import torch.nn as nn
 from torch.nn import Embedding, Sequential, ReLU, Linear
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GATConv, GCNConv, GraphConv
 from torch_scatter import scatter_sum
 
 from networks.layers.eigengat import EigenGAT
@@ -15,15 +15,17 @@ from networks.layers.sheafconv import SheafConv
 
 
 class ModelType(Enum):
+  gcn = 'gcn'
   gat = 'gat'
   eigen_gat = 'eigen_gat'
   rotation_conv = 'rotations'
   feature_rotation_conv = 'feat_rotations'
   sheaf = 'sheaf'
+  mpnn = 'mpnn'
 
   def takes_eigens(self):
     match self:
-      case ModelType.gat | ModelType.sheaf:
+      case ModelType.gat | ModelType.sheaf | ModelType.mpnn | ModelType.gcn:
         return False
       case ModelType.eigen_gat | ModelType.rotation_conv | ModelType.feature_rotation_conv:
         return True
@@ -32,7 +34,7 @@ class ModelType(Enum):
 
   def has_dimensions(self):
     match self:
-      case ModelType.gat | ModelType.eigen_gat:
+      case ModelType.gat | ModelType.eigen_gat | ModelType.mpnn | ModelType.gcn:
         return False
       case ModelType.rotation_conv | ModelType.feature_rotation_conv | ModelType.sheaf:
         return True
@@ -66,6 +68,14 @@ class ModelType(Enum):
         return SheafConv(in_channels=in_channels,
                          out_channels=out_channels,
                          dim=kwargs['dimension'])
+
+      case ModelType.mpnn:
+        return GraphConv(in_channels=in_channels,
+                         out_channels=out_channels)
+
+      case ModelType.gcn:
+        return GCNConv(in_channels=in_channels,
+                       out_channels=out_channels)
 
       case _:
         raise ValueError('Invalid model')

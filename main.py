@@ -1,5 +1,7 @@
 from typing import Tuple, Iterable
 
+import time
+
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import Data
@@ -19,12 +21,13 @@ FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_integer('epochs', 100, 'Epochs')
+flags.DEFINE_integer('epochs', 200, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
-flags.DEFINE_enum('model_name', 'feat_rotations', ['gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'],
+flags.DEFINE_enum('model_name', 'feat_rotations',
+                  ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf', 'mpnn'],
                   'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
@@ -109,6 +112,7 @@ def main(unused_argv):
 
   train_losses = []
   val_losses = []
+  start = time.time()
   for epoch in range(FLAGS.epochs):
 
     losses = []
@@ -123,16 +127,25 @@ def main(unused_argv):
     val_loss = torch.mean(torch.Tensor(losses))
     val_losses.append(val_loss)
 
+    # Checkpoint best model
+    if val_loss == min(val_losses):
+      torch.save(model.state_dict(), 'best.pt')
+
     logging.info(f"epoch: {epoch} \t train: {train_loss:.4f} \t val: {val_loss:.4f}")
+  end = time.time()
+  duration = end - start
+
+  model.load_state_dict(torch.load('best.pt'))
 
   losses = []
   for batch in test_dl:
     losses += [test(model, batch, criterion)]
   test_loss = torch.mean(torch.Tensor(losses))
-  logging.info(f"Final loss: <<< {test_loss:.4f} >>>")
+  logging.info(f"Final loss: {test_loss:.4f}, at {duration / FLAGS.epochs} seconds per epochs.")
 
   np.savez(f'runs/{FLAGS.model_name}_{FLAGS.dimension}d_{FLAGS.spatial_features_name}_{FLAGS.seed}',
            params=FLAGS,
+           duration=duration / FLAGS.epochs,
            train=train_losses,
            val=val_losses,
            test=test_loss)

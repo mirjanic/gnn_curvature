@@ -29,6 +29,10 @@ class SheafConv(MessagePassing):
     def forward(self, x: Tensor, edge_index: Adj):
         n = x.shape[0]
         x = self.feature_lin(x)
+
+
+
+
         out = self.propagate(edge_index, x=x, edge_weight=None, size=None)
         x = x.reshape(-1, self.out_channels)
 
