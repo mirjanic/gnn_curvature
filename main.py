@@ -19,17 +19,17 @@ FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_integer('epochs', 10, 'Epochs')
+flags.DEFINE_integer('epochs', 100, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
-flags.DEFINE_enum('model_name', 'feat_rotations', ['gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'], 'Model to train')
+flags.DEFINE_enum('model_name', 'feat_rotations', ['gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'],
+                  'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
 
 # Features params
-# TODO I couldn't get more than 6 features to work
 flags.DEFINE_integer('spatial_features_count', 6, 'Number of eigenvector and random walk features to generate.')
 flags.DEFINE_enum('spatial_features_name', 'eigens', ['eigens', 'walks'], 'Whether to use eigenvectors or random walks')
 flags.DEFINE_integer('dimension', 2, 'Rotation dimensions. Used only for rotations.')
@@ -41,6 +41,7 @@ def set_seed(seed):
   random.seed(seed)
   # torch.backends.cudnn.benchmark = False
   # torch.use_deterministic_algorithms(True)
+
 
 def train(model, optimizer, data: Data, criterion):
   model.train()
@@ -106,25 +107,35 @@ def main(unused_argv):
   optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
   criterion = torch.nn.L1Loss()
 
+  train_losses = []
+  val_losses = []
   for epoch in range(FLAGS.epochs):
 
     losses = []
     for batch in train_dl:
       losses += [train(model, optimizer, batch, criterion)]
     train_loss = torch.mean(torch.Tensor(losses))
+    train_losses.append(train_loss)
 
     losses = []
     for batch in val_dl:
       losses += [test(model, batch, criterion)]
     val_loss = torch.mean(torch.Tensor(losses))
+    val_losses.append(val_loss)
 
     logging.info(f"epoch: {epoch} \t train: {train_loss:.4f} \t val: {val_loss:.4f}")
 
   losses = []
   for batch in test_dl:
     losses += [test(model, batch, criterion)]
-  logging.info(f"Final loss: <<< {torch.mean(torch.Tensor(losses)):.4f} >>>")
+  test_loss = torch.mean(torch.Tensor(losses))
+  logging.info(f"Final loss: <<< {test_loss:.4f} >>>")
 
+  np.savez(f'runs/{FLAGS.model_name}_{FLAGS.dimension}d_{FLAGS.spatial_features_name}_{FLAGS.seed}',
+           params=FLAGS,
+           train=train_losses,
+           val=val_losses,
+           test=test_loss)
   return
 
 
