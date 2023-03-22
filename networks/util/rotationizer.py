@@ -11,6 +11,9 @@ def rotationize(x: Tensor):
   d = x.shape[-1]
 
   match d:
+    case 1:
+      # Here we just return attention weights
+      return torch.unsqueeze(torch.unsqueeze(x[..., 0, 0], -1), -1)
     case 2:
       angle = x[..., 0, 0] * torch.pi
       c = torch.cos(angle)
@@ -32,7 +35,7 @@ def rotationize(x: Tensor):
                                ], dim=-1)
       rotation = torch.reshape(rotation, (*rotation.shape[:-1], 3, 3))
     case _:
-      upper = torch.triu(x)                                 # Take upper triangular part of input
+      upper = torch.triu(x * torch.pi)                      # Take upper triangular part of input
       skew_sym = upper - torch.transpose(upper, -1, -2)     # Create skew symmetric matrix
       rotation = torch.linalg.matrix_exp(skew_sym)          # Exponentiate to get an orthogonal matrix
 
