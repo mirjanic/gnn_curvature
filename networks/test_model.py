@@ -2,10 +2,11 @@ from enum import Enum
 
 import torch.nn as nn
 from torch.nn import Embedding, Sequential, ReLU, Linear
-from torch_geometric.nn import GATConv
+from torch_geometric.nn import GATConv, GCNConv
 from torch_scatter import scatter_sum
 
 from networks.layers.eigengat import EigenGAT
+from networks.layers.gcn_layer import GCNLayer
 from networks.layers.rotationconv import RotationConv
 from networks.layers.featrotationconv import FeatureRotationConv
 
@@ -15,6 +16,7 @@ from networks.layers.sheafconv import SheafConv
 
 
 class ModelType(Enum):
+  gcn = 'gcn'
   gat = 'gat'
   eigen_gat = 'eigen_gat'
   rotation_conv = 'rotations'
@@ -23,7 +25,7 @@ class ModelType(Enum):
 
   def takes_eigens(self):
     match self:
-      case ModelType.gat | ModelType.sheaf:
+      case ModelType.gcn | ModelType.gat | ModelType.sheaf:
         return False
       case ModelType.eigen_gat | ModelType.rotation_conv | ModelType.feature_rotation_conv:
         return True
@@ -32,7 +34,7 @@ class ModelType(Enum):
 
   def has_dimensions(self):
     match self:
-      case ModelType.gat | ModelType.eigen_gat:
+      case ModelType.gcn | ModelType.gat | ModelType.eigen_gat:
         return False
       case ModelType.rotation_conv | ModelType.feature_rotation_conv | ModelType.sheaf:
         return True
@@ -41,6 +43,10 @@ class ModelType(Enum):
 
   def make_layer(self, in_channels, out_channels, **kwargs):
     match self:
+      case ModelType.gcn:
+        return GCNConv(in_channels=in_channels,
+                       out_channels=out_channels)
+
       case ModelType.gat:
         return GATConv(in_channels=in_channels,
                        out_channels=out_channels)
@@ -70,9 +76,16 @@ class ModelType(Enum):
       case _:
         raise ValueError('Invalid model')
 
+
+class TaskType(Enum):
+  node = 'node'
+  graph = 'graph'
+
+
 class TestModel(nn.Module):
 
   def __init__(self, model: ModelType,
+               input_dim: int,
                hidden_dim: int,
                output_dim: int,
                num_layers: int,
@@ -80,6 +93,7 @@ class TestModel(nn.Module):
     super(TestModel, self).__init__()
 
     self.model = model
+    self.task = kwargs['task']
 
     total_hidden_dim = hidden_dim
 
@@ -90,7 +104,11 @@ class TestModel(nn.Module):
 
     self.num_layers = num_layers
 
-    self.embed = Embedding(28, total_hidden_dim)
+    match self.task:
+      case TaskType.node:
+        self.embed = Linear(input_dim, total_hidden_dim)
+      case TaskType.graph:
+        self.embed = Embedding(28, total_hidden_dim)
 
     self.layers = [self.model.make_layer(in_channels=total_hidden_dim,
                                          out_channels=hidden_dim,
@@ -104,15 +122,19 @@ class TestModel(nn.Module):
 
   def forward(self, data):
     x = data.x
+    match self.task:
+      case TaskType.node:
+        x = self.embed(x).squeeze(1)
+      case TaskType.graph:
+        batch = data.batch
+        x = self.embed(x.long()).squeeze(1)
+
     edge_index = data.edge_index
-    batch = data.batch
 
     if self.model.takes_eigens():
       eigens = data[self.spft_name]
     else:
       eigens = None
-
-    x = self.embed(x.long()).squeeze(1)
 
     for i in range(self.num_layers):
       if self.model.takes_eigens():
@@ -121,7 +143,9 @@ class TestModel(nn.Module):
         x = self.layers[i](x, edge_index)
       x = F.relu(x)
 
-    y = scatter_sum(x, batch, dim=0)
-    y = self.mlp(y)
+    if self.task == TaskType.graph:
+      x = scatter_sum(x, batch, dim=0)
+
+    y = self.mlp(x)
     y = y.squeeze(-1)
     return y

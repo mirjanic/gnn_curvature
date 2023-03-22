@@ -1,6 +1,7 @@
 from typing import Tuple, Iterable
 
 import torch
+from torch_geometric.datasets import WebKB, Planetoid
 from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import Data
 from torch_geometric.datasets.zinc import ZINC
@@ -13,7 +14,8 @@ from absl import app
 from absl import flags
 from absl import logging
 
-from networks.test_model import TestModel, ModelType
+from datasets import get_dataset, get_fixed_splits
+from networks.test_model import TestModel, ModelType, TaskType
 
 FLAGS = flags.FLAGS
 
@@ -24,9 +26,10 @@ flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
-flags.DEFINE_enum('model_name', 'feat_rotations', ['gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'], 'Model to train')
+flags.DEFINE_enum('model_name', 'rotations', ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf'], 'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
+flags.DEFINE_enum('task', 'node', ['node', 'graph'], 'Type of classification task')
 
 # Features params
 # TODO I couldn't get more than 6 features to work
@@ -82,6 +85,10 @@ def load_datasets(device) -> Tuple[Iterable, Iterable, Iterable]:
 
 
 def main(unused_argv):
+  if FLAGS.task == 'node':
+    masked_main(unused_argv)
+    return
+
   set_seed(FLAGS.seed)
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -95,9 +102,11 @@ def main(unused_argv):
     'num_layers': FLAGS.num_layers,
     'eigen_count': FLAGS.spatial_features_count,
     'spatial_name': FLAGS.spatial_features_name,
+    'input_dim': 'TODO',
     'hidden_dim': FLAGS.hidden_dim,
     'dimension': FLAGS.dimension,
-    'output_dim': 1
+    'output_dim': 1,
+    'task': TaskType(FLAGS.task)
   }
 
   model = TestModel(**model_kwargs)
@@ -126,6 +135,73 @@ def main(unused_argv):
   logging.info(f"Final loss: <<< {torch.mean(torch.Tensor(losses)):.4f} >>>")
 
   return
+
+
+def train_masked(model, optimizer, data, criterion):
+  model.train()
+  optimizer.zero_grad()
+  pred = model(data)[data.train_mask]
+  loss = criterion(pred, data.y[data.train_mask])
+  loss.backward()
+  optimizer.step()
+  return loss
+
+
+def test_masked(model, data, criterion):
+  model.eval()
+  with torch.no_grad():
+    pred = model(data)
+    loss = criterion(pred[data.test_mask], data.y[data.test_mask])
+    return loss
+
+
+def load_masked_datasets(device):
+  """
+  Precompute eigenvectors, move data to GPU, shuffle and minibatch
+  """
+  transforms = T.Compose([
+    T.AddLaplacianEigenvectorPE(k=FLAGS.spatial_features_count, attr_name='eigens'),
+    T.AddRandomWalkPE(walk_length=FLAGS.spatial_features_count, attr_name='walks')
+    ])
+
+  splits = ['train', 'val', 'test']
+
+  # raw = WebKB(root='data/texas', name='texas', pre_transform=transforms)
+  raw = Planetoid(root='data/cora', name='cora', pre_transform=transforms)
+  raw.data = raw.data.to(device)
+
+  return raw[0]
+
+
+def masked_main(unused_argv):
+  set_seed(FLAGS.seed)
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+  data = load_masked_datasets(device)
+
+  logging.info(f"Training model '{FLAGS.model_name}'")
+
+  model_kwargs = {
+    'model': ModelType(FLAGS.model_name),
+    'num_layers': FLAGS.num_layers,
+    'eigen_count': FLAGS.spatial_features_count,
+    'spatial_name': FLAGS.spatial_features_name,
+    'input_dim': data.x.shape[1],
+    'hidden_dim': FLAGS.hidden_dim,
+    'dimension': FLAGS.dimension,
+    'output_dim': 1,
+    'task': TaskType(FLAGS.task)
+  }
+
+  model = TestModel(**model_kwargs)
+  model.to(device)
+
+  optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
+  criterion = torch.nn.L1Loss()
+
+  for epoch in range(FLAGS.epochs):
+    loss = train_masked(model, optimizer, data, criterion)
+    print(f"loss: {loss}")
 
 
 if __name__ == '__main__':
