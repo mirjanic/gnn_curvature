@@ -1,13 +1,9 @@
-from typing import Tuple, Iterable
+from typing import Tuple, Iterable, Optional
 
 import time
 
 import torch
-from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import Data
-from torch_geometric.datasets.zinc import ZINC
-
-import torch_geometric.transforms as T
 import numpy as np
 import random
 
@@ -15,13 +11,14 @@ from absl import app
 from absl import flags
 from absl import logging
 
-from networks.test_model import TestModel, ModelType
+from datasets import load_zinc_datasets, load_node_class_datasets
+from networks.test_model import TestModel, ModelType, TaskType
 
 FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_integer('epochs', 200, 'Epochs')
+flags.DEFINE_integer('epochs', 10, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
@@ -31,6 +28,9 @@ flags.DEFINE_enum('model_name', 'feat_rotations',
                   'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
+
+flags.DEFINE_enum('dataset', 'cornell', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
+                  'Dataset used for training (includes both node and graph-level classification.)')
 
 # Features params
 flags.DEFINE_integer('spatial_features_count', 6, 'Number of eigenvector and random walk features to generate.')
@@ -46,75 +46,85 @@ def set_seed(seed):
   # torch.use_deterministic_algorithms(True)
 
 
-def train(model, optimizer, data: Data, criterion):
+def train(model, optimizer, data: Data, criterion, mask=Optional[Iterable]):
   model.train()
   optimizer.zero_grad()
   pred = model(data)
-  loss = criterion(pred, data.y)
+
+  if mask is None:
+    loss = criterion(pred, data.y)
+  else:
+    loss = criterion(pred[mask], data.y[mask])
+
   loss.backward()
   optimizer.step()
   return loss
 
 
-def test(model, data, criterion):
+def test(model, data, criterion, mask=Optional[Iterable]):
   model.eval()
   with torch.no_grad():
     pred = model(data)
-    loss = criterion(pred, data.y)
+    if mask is None:
+      loss = criterion(pred, data.y)
+    else:
+      loss = criterion(pred[mask], data.y[mask])
     return loss
 
 
-def load_datasets(device) -> Tuple[Iterable, Iterable, Iterable]:
-  """
-  Precompute eigenvectors, move data to GPU, shuffle and minibatch
-  """
-  transforms = T.Compose([
-    T.AddLaplacianEigenvectorPE(k=FLAGS.spatial_features_count, attr_name='eigens'),
-    T.AddRandomWalkPE(walk_length=FLAGS.spatial_features_count, attr_name='walks')
-    ])
-
-  splits = ['train', 'val', 'test']
-
-  datasets = {k: ZINC(root='data/zinc', split=k, subset=True, pre_transform=transforms) for k in splits}
-
-  for v in datasets.values():
-    v.data = v.data.to(device)
-
-  dataloaders = {k: DataLoader(v, batch_size=FLAGS.bs, shuffle=True) for (k, v) in datasets.items()}
-
-  return dataloaders['train'], dataloaders['val'], dataloaders['test']
-
-
-def main(unused_argv):
-  set_seed(FLAGS.seed)
-  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-  # Important! If you already downloaded non-transformed dataset you need to delete it
-  train_dl, val_dl, test_dl = load_datasets(device)
-
-  logging.info(f"Training model '{FLAGS.model_name}'")
-
-  model_kwargs = {
-    'model': ModelType(FLAGS.model_name),
-    'num_layers': FLAGS.num_layers,
-    'eigen_count': FLAGS.spatial_features_count,
-    'spatial_name': FLAGS.spatial_features_name,
-    'hidden_dim': FLAGS.hidden_dim,
-    'dimension': FLAGS.dimension,
-    'output_dim': 1
-  }
-
-  model = TestModel(**model_kwargs)
+def run_node_class_experiment(model, data: Data, criterion, device):
+  optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
   model.to(device)
 
-  optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
-  criterion = torch.nn.L1Loss()
+  train_mask = data.train_mask
+  val_mask = data.val_mask
+  test_mask = data.test_mask
+
+  # If mask is 2D, use first split
+  if len(train_mask.shape) == 2:
+    train_mask = train_mask[:, 0]
+    val_mask = val_mask[:, 0]
+    test_mask = test_mask[:, 0]
 
   train_losses = []
   val_losses = []
   start = time.time()
   for epoch in range(FLAGS.epochs):
 
+    train_losses += [train(model, optimizer, data, criterion, train_mask)]
+    val_losses += [test(model, data, criterion, val_mask)]
+
+    # Checkpoint best model
+    if val_losses[-1] == min(val_losses):
+      torch.save(model.state_dict(), 'best.pt')
+
+    if epoch % 10 == 0:
+      logging.info(f"epoch: {epoch} \t train: {train_losses[-1]:.4f} \t val: {val_losses[-1]:.4f}")
+
+  end = time.time()
+  duration = end - start
+
+  model.load_state_dict(torch.load('best.pt'))
+
+  # Let me know if theres a better way of doing this
+  train_losses = torch.stack(train_losses).cpu().detach().numpy()
+  val_losses = torch.stack(val_losses).cpu().detach().numpy()
+  test_loss = test(model, data, criterion, test_mask).cpu().detach()
+
+  return train_losses, val_losses, test_loss, duration
+
+
+def run_graph_class_experiment(model, dataloaders: Tuple[Iterable, Iterable, Iterable], criterion, device):
+  train_dl, val_dl, test_dl = dataloaders
+
+  optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
+  model.to(device)
+
+  train_losses = []
+  val_losses = []
+  start = time.time()
+
+  for epoch in range(FLAGS.epochs):
     losses = []
     for batch in train_dl:
       losses += [train(model, optimizer, batch, criterion)]
@@ -141,6 +151,43 @@ def main(unused_argv):
   for batch in test_dl:
     losses += [test(model, batch, criterion)]
   test_loss = torch.mean(torch.Tensor(losses))
+
+  return train_losses, val_losses, test_loss, duration
+
+
+def main(unused_argv):
+  set_seed(FLAGS.seed)
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+  task = TaskType.graph if FLAGS.dataset == 'ZINC' else TaskType.node
+
+  model_kwargs = {
+    'model': ModelType(FLAGS.model_name),
+    'num_layers': FLAGS.num_layers,
+    'eigen_count': FLAGS.spatial_features_count,
+    'spatial_name': FLAGS.spatial_features_name,
+    'hidden_dim': FLAGS.hidden_dim,
+    'dimension': FLAGS.dimension,
+    'output_dim': 1,
+    'task': task
+  }
+
+  criterion = torch.nn.L1Loss()
+  logging.info(f"Training model '{FLAGS.model_name}'")
+
+  # If performing node classification, run experiments with masking applied to data.
+  match task:
+    case TaskType.node:
+      data = load_node_class_datasets(device, name=FLAGS.dataset, spatial_count=FLAGS.spatial_features_count)
+      model_kwargs['input_dim'] = data.x.shape[1]
+      model = TestModel(**model_kwargs)
+      train_losses, val_losses, test_loss, duration = run_node_class_experiment(model, data, criterion, device)
+    case TaskType.graph:
+      dataloaders = load_zinc_datasets(device, batch_size=FLAGS.bs, spatial_count=FLAGS.spatial_features_count)
+      model_kwargs['input_dim'] = 1
+      model = TestModel(**model_kwargs)
+      train_losses, val_losses, test_loss, duration = run_graph_class_experiment(model, dataloaders, criterion, device)
+
   logging.info(f"Final loss: {test_loss:.4f}, at {duration / FLAGS.epochs} seconds per epochs.")
 
   np.savez(f'runs/{FLAGS.model_name}_'
