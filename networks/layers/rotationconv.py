@@ -63,6 +63,10 @@ class RotationConv(MessagePassing):
     edge_index, _ = add_self_loops(edge_index, num_nodes=num_nodes)
 
     # Create edge attention
+    # eigens_1 = self.edge_updater(edge_index, e=eigens)
+    # eigens_2 = self.edge_updater(edge_index[[1, 0], :], e=eigens)
+    # eigens = eigens_2 + eigens_1
+    # eigens = eigens.reshape(-1, self.out_channels, self.dimension, self.dimension)
     eigens = self.edge_updater(edge_index, e=eigens)
     eigens = eigens.reshape(-1, self.out_channels, self.dimension, self.dimension)
 

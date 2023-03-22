@@ -1,8 +1,10 @@
 from enum import Enum
 
+import numpy as np
+import torch
 import torch.nn as nn
 from torch.nn import Embedding, Sequential, ReLU, Linear
-from torch_geometric.nn import GATConv, GCNConv, GraphConv
+from torch_geometric.nn import GATConv, GCNConv, GraphConv, SAGEConv, GINConv, MLP
 from torch_scatter import scatter_sum
 
 from networks.layers.eigengat import EigenGAT
@@ -22,10 +24,12 @@ class ModelType(Enum):
   feature_rotation_conv = 'feat_rotations'
   sheaf = 'sheaf'
   mpnn = 'mpnn'
+  sage = 'sage'
+  gin = 'gin'
 
   def takes_eigens(self):
     match self:
-      case ModelType.gat | ModelType.sheaf | ModelType.mpnn | ModelType.gcn:
+      case ModelType.gat | ModelType.sheaf | ModelType.mpnn | ModelType.gcn | ModelType.sage | ModelType.gin:
         return False
       case ModelType.eigen_gat | ModelType.rotation_conv | ModelType.feature_rotation_conv:
         return True
@@ -34,7 +38,7 @@ class ModelType(Enum):
 
   def has_dimensions(self):
     match self:
-      case ModelType.gat | ModelType.eigen_gat | ModelType.mpnn | ModelType.gcn:
+      case ModelType.gat | ModelType.eigen_gat | ModelType.mpnn | ModelType.gcn | ModelType.sage | ModelType.gin:
         return False
       case ModelType.rotation_conv | ModelType.feature_rotation_conv | ModelType.sheaf:
         return True
@@ -76,6 +80,13 @@ class ModelType(Enum):
       case ModelType.gcn:
         return GCNConv(in_channels=in_channels,
                        out_channels=out_channels)
+
+      case ModelType.sage:
+        return SAGEConv(in_channels=in_channels,
+                        out_channels=out_channels)
+
+      case ModelType.gin:
+        return GINConv(nn=MLP([in_channels, out_channels, out_channels]))
 
       case _:
         raise ValueError('Invalid model')

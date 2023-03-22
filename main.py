@@ -27,7 +27,7 @@ flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
 flags.DEFINE_enum('model_name', 'feat_rotations',
-                  ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf', 'mpnn'],
+                  ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf', 'mpnn', 'sage', 'gin'],
                   'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
@@ -143,7 +143,10 @@ def main(unused_argv):
   test_loss = torch.mean(torch.Tensor(losses))
   logging.info(f"Final loss: {test_loss:.4f}, at {duration / FLAGS.epochs} seconds per epochs.")
 
-  np.savez(f'runs/{FLAGS.model_name}_{FLAGS.dimension}d_{FLAGS.spatial_features_name}_{FLAGS.seed}',
+  np.savez(f'runs/{FLAGS.model_name}_'
+           f'{FLAGS.dimension}d_'
+           f'{FLAGS.spatial_features_name}_{FLAGS.spatial_features_count}k_'
+           f'{FLAGS.seed}',
            params=FLAGS,
            duration=duration / FLAGS.epochs,
            train=train_losses,
