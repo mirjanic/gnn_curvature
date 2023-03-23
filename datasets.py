@@ -4,9 +4,10 @@ import torch_geometric.transforms as T
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.datasets import WebKB, ZINC, Planetoid
+from torch_geometric.transforms import NormalizeFeatures
 
 
-def load_node_class_datasets(device, name, spatial_count) -> Data:
+def load_node_class_datasets(device, name, spatial_count):
   """
   Precompute eigenvectors, move data to GPU, shuffle and minibatch
   """
@@ -19,13 +20,13 @@ def load_node_class_datasets(device, name, spatial_count) -> Data:
     raw = WebKB(root=f'data/{name}', name=name, pre_transform=transforms)
   # For some reason, PubMed and CiteSeer don't work
   elif name in ['cora']:
-    raw = Planetoid(root=f'data/{name}', name=name, pre_transform=transforms)
+    raw = Planetoid(root=f'data/{name}', name=name, pre_transform=transforms, transform=NormalizeFeatures())
   else:
     raise NameError(f'Error: {name} dataset not included.')
 
   raw.data = raw.data.to(device)
 
-  return raw[0]
+  return raw
 
 
 def load_zinc_datasets(device, batch_size, spatial_count) -> Tuple[Iterable, Iterable, Iterable]:
