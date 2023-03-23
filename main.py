@@ -13,12 +13,13 @@ from absl import logging
 
 from datasets import load_zinc_datasets, load_node_class_datasets
 from networks.test_model import TestModel, ModelType, TaskType, SimpleGCN
+from pathlib import Path
 
 FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
-flags.DEFINE_integer('epochs', 1000, 'Epochs')
+flags.DEFINE_integer('epochs', 2000, 'Epochs')
 flags.DEFINE_integer('seed', 42, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
@@ -26,10 +27,11 @@ flags.DEFINE_integer('bs', 64, 'Batch size')
 flags.DEFINE_enum('model_name', 'feat_rotations',
                   ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf', 'mpnn', 'sage', 'gin'],
                   'Model to train')
-flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
-flags.DEFINE_integer('hidden_dim', 16, 'Number of latent dimensions')
+flags.DEFINE_integer('num_layers', 2, 'Number of convolutions to perform')
+flags.DEFINE_integer('hidden_dim', 128, 'Number of latent dimensions')
 
-flags.DEFINE_enum('dataset', 'zinc', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
+flags.DEFINE_enum('dataset', 'chameleon', ['zinc', 'texas', 'wisconsin', 'chameleon', 'crocodile', 'squirrel', 'cornell',
+                                           'cora'],
                   'Dataset used for training (includes both node and graph-level classification.)')
 
 # Features params
@@ -82,8 +84,9 @@ def run_node_class_experiment(model, data: Data, device):
   test_mask = data.val_mask
   val_mask = data.test_mask
 
+  has_mask_splits = len(train_mask.shape) == 2
   # If mask is 2D, use first split
-  if len(train_mask.shape) == 2:
+  if has_mask_splits:
     train_mask = train_mask[:, 0]
     val_mask = val_mask[:, 0]
     test_mask = test_mask[:, 0]
@@ -91,8 +94,8 @@ def run_node_class_experiment(model, data: Data, device):
   train_losses = []
   val_losses = []
   start = time.time()
-  for epoch in range(FLAGS.epochs):
 
+  for epoch in range(FLAGS.epochs):
     train_losses += [train(model, optimizer, data, criterion, train_mask)]
     val_losses += [test(model, data, criterion, val_mask)]
 
@@ -100,8 +103,9 @@ def run_node_class_experiment(model, data: Data, device):
     if val_losses[-1] == max(val_losses):
       torch.save(model.state_dict(), 'best.pt')
 
-    if epoch % 10 == 0:
+    if epoch % 200 == 0:
       logging.info(f"epoch: {epoch} \t train: {train_losses[-1]:.4f} \t val: {val_losses[-1]:.4f}")
+    epoch += 1
 
   end = time.time()
   duration = end - start
@@ -185,7 +189,7 @@ def main(unused_argv):
       model_kwargs['input_dim'] = data.num_features
       model_kwargs['output_dim'] = data.num_classes
       model = TestModel(**model_kwargs)
-      # model = SimpleGCN(FLAGS.hidden_dim)
+      # model = SimpleGCN(data.num_features, FLAGS.hidden_dim, data.num_classes)
       train_losses, val_losses, test_loss, duration = run_node_class_experiment(model, data[0], device)
     case TaskType.graph:
       dataloaders = load_zinc_datasets(device, batch_size=FLAGS.bs, spatial_count=FLAGS.spatial_features_count)
@@ -206,5 +210,60 @@ def main(unused_argv):
   return
 
 
+def report():
+  p = Path('runs/node_classification')
+  results = {}
+  for file in p.iterdir():
+    data = np.load(file, allow_pickle=True)
+    model = str(data['model'])
+    dataset = str(data['dataset'])
+    if model not in results:
+      results[model] = {}
+    results[model][dataset] = f"${np.mean(data['accuracies']):.4f}$\tiny$\pm {np.std(data['accuracies']):.4f}$"
+
+    # print(f"{data['model']} accuracy on {data['dataset']} dataset: {np.mean(data['accuracies'])} +/= {np.std(data['accuracies']) * 2}")
+  for model, res in results.items():
+    print(f"{model}: {res}")
+
+def run_node_classification_suite(unused_argv):
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+  for dataset in ['texas', 'cornell', 'chameleon']:
+    data = load_node_class_datasets(device, name=dataset, spatial_count=FLAGS.spatial_features_count)
+    for model_type in ['sage', 'mpnn', 'gin']:
+      print("======================================")
+      print(f"RUNNING {model_type} ON {dataset}")
+      print("======================================")
+      model_kwargs = {
+        'model': ModelType(model_type),
+        'num_layers': FLAGS.num_layers,
+        'eigen_count': FLAGS.spatial_features_count,
+        'spatial_name': FLAGS.spatial_features_name,
+        'input_dim': data.num_features,
+        'hidden_dim': FLAGS.hidden_dim,
+        'output_dim': data.num_classes,
+        'dimension': FLAGS.dimension,
+        'task': TaskType.node
+      }
+      accuracies = []
+      durations = []
+      for seed in range(3):
+        model = TestModel(**model_kwargs)
+        set_seed(seed)
+        _, _, accuracy, duration = run_node_class_experiment(model, data[0], device)
+        accuracies.append(accuracy)
+        durations.append(duration)
+      print(f"Accuracy: {np.mean(accuracies)} +/= {np.std(accuracies)*2}")
+      np.savez(f'runs/node_classification/{model_type}_{dataset}',
+               model=model_type,
+               dataset=dataset,
+               accuracies=accuracies,
+               durations=durations)
+
+  report()
+
+
 if __name__ == '__main__':
-  app.run(main)
+  report()
+  # app.run(run_node_classification_suite)
+  # app.run(main)

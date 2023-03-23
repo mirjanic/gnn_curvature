@@ -173,11 +173,11 @@ class TestModel(nn.Module):
 
 
 class SimpleGCN(torch.nn.Module):
-  def __init__(self, hidden_channels):
+  def __init__(self, input_dim, hidden_dim, output_dim):
     super().__init__()
     torch.manual_seed(1234567)
-    self.conv1 = GCNConv(1433, hidden_channels)
-    self.conv2 = GCNConv(hidden_channels, 7)
+    self.conv1 = GCNConv(input_dim, hidden_dim)
+    self.conv2 = GCNConv(hidden_dim, output_dim)
 
   def forward(self, data):
     x = data.x
