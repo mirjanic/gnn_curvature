@@ -29,7 +29,7 @@ flags.DEFINE_enum('model_name', 'feat_rotations',
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
 flags.DEFINE_integer('hidden_dim', 16, 'Number of latent dimensions')
 
-flags.DEFINE_enum('dataset', 'texas', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
+flags.DEFINE_enum('dataset', 'zinc', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
                   'Dataset used for training (includes both node and graph-level classification.)')
 
 # Features params
@@ -130,13 +130,13 @@ def run_graph_class_experiment(model, dataloaders: Tuple[Iterable, Iterable, Ite
   for epoch in range(FLAGS.epochs):
     losses = []
     for batch in train_dl:
-      losses += [train(model, optimizer, batch, criterion)]
+      losses += [train(model, optimizer, batch, criterion, mask=None)]
     train_loss = torch.mean(torch.Tensor(losses))
     train_losses.append(train_loss)
 
     losses = []
     for batch in val_dl:
-      losses += [test(model, batch, criterion)]
+      losses += [test(model, batch, criterion, mask=None)]
     val_loss = torch.mean(torch.Tensor(losses))
     val_losses.append(val_loss)
 
@@ -152,7 +152,7 @@ def run_graph_class_experiment(model, dataloaders: Tuple[Iterable, Iterable, Ite
 
   losses = []
   for batch in test_dl:
-    losses += [test(model, batch, criterion)]
+    losses += [test(model, batch, criterion, mask=None)]
   test_loss = torch.mean(torch.Tensor(losses))
 
   logging.info(f"Final loss: {test_loss:.4f}, at {duration / FLAGS.epochs} seconds per epochs.")
@@ -164,7 +164,7 @@ def main(unused_argv):
   set_seed(FLAGS.seed)
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-  task = TaskType.graph if FLAGS.dataset == 'ZINC' else TaskType.node
+  task = TaskType.graph if FLAGS.dataset == 'zinc' else TaskType.node
 
   model_kwargs = {
     'model': ModelType(FLAGS.model_name),
