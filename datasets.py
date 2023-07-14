@@ -3,7 +3,7 @@ from typing import Iterable, Tuple
 import torch_geometric.transforms as T
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.datasets import WebKB, ZINC, Planetoid
+from torch_geometric.datasets import WebKB, ZINC, Planetoid, WikipediaNetwork
 from torch_geometric.transforms import NormalizeFeatures
 
 
@@ -18,7 +18,9 @@ def load_node_class_datasets(device, name, spatial_count):
 
   if name in ['texas', 'wisconsin', 'cornell']:
     raw = WebKB(root=f'data/{name}', name=name, pre_transform=transforms)
-  # For some reason, PubMed and CiteSeer don't work
+  elif name in ['chameleon', 'crocodile', 'squirrel']:
+    raw = WikipediaNetwork(root=f'data/{name}', name=name, pre_transform=transforms)
+    # For some reason, PubMed and CiteSeer don't work
   elif name in ['cora']:
     raw = Planetoid(root=f'data/{name}', name=name, pre_transform=transforms, transform=NormalizeFeatures())
   else:

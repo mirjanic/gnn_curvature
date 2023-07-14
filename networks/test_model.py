@@ -170,3 +170,20 @@ class TestModel(nn.Module):
     y = self.mlp(x)
     y = y.squeeze(-1)
     return y
+
+
+class SimpleGCN(torch.nn.Module):
+  def __init__(self, input_dim, hidden_dim, output_dim):
+    super().__init__()
+    torch.manual_seed(1234567)
+    self.conv1 = GCNConv(input_dim, hidden_dim)
+    self.conv2 = GCNConv(hidden_dim, output_dim)
+
+  def forward(self, data):
+    x = data.x
+    edge_index = data.edge_index
+    x = self.conv1(x, edge_index)
+    x = x.relu()
+    x = F.dropout(x, p=0.5, training=self.training)
+    x = self.conv2(x, edge_index)
+    return x
