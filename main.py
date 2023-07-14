@@ -12,24 +12,24 @@ from absl import flags
 from absl import logging
 
 from datasets import load_zinc_datasets, load_node_class_datasets
-from networks.test_model import TestModel, ModelType, TaskType, SimpleGCN
+from networks.test_model import TestModel, ModelType, TaskType
 
 FLAGS = flags.FLAGS
 
 # Training params
 flags.DEFINE_float('lr', 1e-3, 'Learning rate')
 flags.DEFINE_integer('epochs', 1000, 'Epochs')
-flags.DEFINE_integer('seed', 42, 'Random seed')
+flags.DEFINE_integer('seed', 43, 'Random seed')
 flags.DEFINE_integer('bs', 64, 'Batch size')
 
 # Model params
-flags.DEFINE_enum('model_name', 'feat_rotations',
+flags.DEFINE_enum('model_name', 'sage',
                   ['gcn', 'gat', 'eigen_gat', 'rotations', 'feat_rotations', 'sheaf', 'mpnn', 'sage', 'gin'],
                   'Model to train')
 flags.DEFINE_integer('num_layers', 4, 'Number of convolutions to perform')
-flags.DEFINE_integer('hidden_dim', 16, 'Number of latent dimensions')
+flags.DEFINE_integer('hidden_dim', 64, 'Number of latent dimensions')
 
-flags.DEFINE_enum('dataset', 'zinc', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
+flags.DEFINE_enum('dataset', 'cora', ['zinc', 'texas', 'wisconsin', 'cornell', 'cora'],
                   'Dataset used for training (includes both node and graph-level classification.)')
 
 # Features params
@@ -75,7 +75,7 @@ def test(model, data, criterion, mask=Optional[Iterable]):
 
 def run_node_class_experiment(model, data: Data, device):
   criterion = torch.nn.CrossEntropyLoss()
-  optimizer = torch.optim.Adam(params=model.parameters(), lr=0.001)
+  optimizer = torch.optim.Adam(params=model.parameters(), lr=FLAGS.lr)
   model.to(device)
 
   train_mask = data.train_mask
@@ -101,7 +101,7 @@ def run_node_class_experiment(model, data: Data, device):
       torch.save(model.state_dict(), 'best.pt')
 
     if epoch % 10 == 0:
-      logging.info(f"epoch: {epoch} \t train: {train_losses[-1]:.4f} \t val: {val_losses[-1]:.4f}")
+      logging.info(f"epoch: {epoch} \t train: {train_losses[-1]:.5f} \t val: {val_losses[-1]:.3f}")
 
   end = time.time()
   duration = end - start
@@ -185,7 +185,6 @@ def main(unused_argv):
       model_kwargs['input_dim'] = data.num_features
       model_kwargs['output_dim'] = data.num_classes
       model = TestModel(**model_kwargs)
-      # model = SimpleGCN(FLAGS.hidden_dim)
       train_losses, val_losses, test_loss, duration = run_node_class_experiment(model, data[0], device)
     case TaskType.graph:
       dataloaders = load_zinc_datasets(device, batch_size=FLAGS.bs, spatial_count=FLAGS.spatial_features_count)

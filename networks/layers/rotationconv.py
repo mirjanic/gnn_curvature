@@ -72,10 +72,13 @@ class RotationConv(MessagePassing):
 
     # Convert edge attentions into rotations
     rotations = rotationize(eigens)
+    # rotations = eigens
+    # eigens = eigens + torch.eye(eigens.shape[-1], device='cuda:0').repeat(eigens.shape[0], eigens.shape[1], 1, 1)
+    # dets = torch.linalg.det(eigens).unsqueeze(-1).unsqueeze(-1)
+    # rotations = eigens / dets
 
     # Propagate with rotations
     out = self.propagate(edge_index, x=x, rotations=rotations, size=None)
-
 
     return out
 
